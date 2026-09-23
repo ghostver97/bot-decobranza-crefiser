@@ -1,7 +1,9 @@
 const {
   default: makeWASocket,
   useMultiFileAuthState,
-  DisconnectReason
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  Browsers
 } = require('@whiskeysockets/baileys');
 const cron = require('node-cron');
 const pino = require('pino');
@@ -13,13 +15,13 @@ const path = require('path');
 const CLIENTES_FILE = path.join(__dirname, 'clientes.json');
 const CONFIG_FILE = path.join(__dirname, 'config.json');
 
-// Servidor HTTP simple para Railway (evita que se cierre el contenedor)
+// Servidor HTTP para Railway
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot Financiera CREFICER en línea.');
+  res.end('Bot Financiera CREFICER en linea.');
 }).listen(PORT, () => {
-  console.log(`Servidor HTTP listo en el puerto ${PORT}`);
+  console.log(`[HTTP] Servidor listo en el puerto ${PORT}`);
 });
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -45,44 +47,59 @@ function writeJson(filePath, data) {
   }
 }
 
+let cronIniciado = false;
+
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`Usando versión de WhatsApp Web: v${version.join('.')}, última: ${isLatest}`);
 
   const sock = makeWASocket({
+    version,
     auth: state,
     logger: pino({ level: 'silent' }),
-    printQRInTerminal: false
+    printQRInTerminal: false,
+    browser: Browsers.ubuntu('Chrome'), // Identificación compatible
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 0,
+    keepAliveIntervalMs: 10000
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('\n--- ESCANEA ESTE QR CON WHATSAPP EN RAILWAY LOGS ---\n');
+      console.log('\n=================================================');
+      console.log('--- ESCANEA ESTE CODIGO QR CON TU WHATSAPP ---');
+      console.log('=================================================\n');
       qrcode.generate(qr, { small: true });
     }
 
     if (connection === 'close') {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('Conexión cerrada. Reconectando...', shouldReconnect);
-      if (shouldReconnect) startBot();
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      console.log(`Conexión cerrada (Código: ${statusCode}). Reconectando en 5 segundos...`);
+      
+      if (shouldReconnect) {
+        setTimeout(() => {
+          startBot();
+        }, 5000);
+      } else {
+        console.log('Sesión cerrada permanentemente. Limpia auth_info_baileys para nuevo QR.');
+      }
     } else if (connection === 'open') {
-      console.log('Conexión exitosa con WhatsApp. Bot activo.');
+      console.log('\n========================================');
+      console.log('CONEXION EXITOSA. BOT ACTIVO Y LISTO.');
+      console.log('========================================\n');
+
+      if (!cronIniciado) {
+        iniciarRutinaCron(sock);
+        cronIniciado = true;
+      }
     }
   });
-
-  // RUTINA AUTOMÁTICA DIARIA
-  const config = readJson(CONFIG_FILE, {});
-  const cronHorario = config.horaEnvio || '30 8 * * *';
-  const tz = config.timezone || 'America/Mexico_City';
-
-  cron.schedule(cronHorario, async () => {
-    console.log('--- Ejecutando envío automático diario de recordatorios ---');
-    await procesarCobranza(sock);
-  }, { timezone: tz });
 
   // GESTOR DE MENSAJES Y COMANDOS
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -101,13 +118,11 @@ async function startBot() {
     const configActual = readJson(CONFIG_FILE, {});
     const esAdmin = senderNumber.includes(configActual.adminNumber);
 
-    // 1. Comando público para clientes
     if (cleanText.toLowerCase() === '.pago') {
       await sock.sendMessage(senderJid, { text: configActual.infoPago });
       return;
     }
 
-    // Comandos restringidos al Administrador
     if (!cleanText.startsWith('.')) return;
 
     const [cmd, ...args] = cleanText.split(' ');
@@ -120,19 +135,19 @@ async function startBot() {
 
 *Gestión de Clientes:*
 🔹 *.agregar Nombre | Teléfono | Monto | Frecuencia | DiaSemana*
-   _Ejemplo Diario:_ .agregar Carlos Ruiz | 5212221112233 | $100 | diario
-   _Ejemplo Semanal:_ .agregar Rosa Diaz | 5212224445566 | $300 | semanal | 1
-   _(1=Lunes, 2=Martes, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 0=Dom)_
-🔹 *.clientes* (Ver lista de clientes registrados)
-🔹 *.eliminar <teléfono>* (Dar de baja un cliente)
+   _Diario:_ .agregar Carlos Ruiz | 5212221112233 | $100 | diario
+   _Semanal:_ .agregar Rosa Diaz | 5212224445566 | $300 | semanal | 1
+   _(1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 0=Dom)_
+🔹 *.clientes* (Ver lista)
+🔹 *.eliminar <teléfono>* (Dar de baja)
 
-*Personalización del Bot:*
-🔹 *.nombre <Nuevo Nombre>* (Cambia el nombre de la financiera)
-🔹 *.plantilla <Mensaje>* (Usa {nombre}, {financiera} y {monto})
-🔹 *.setpago <Datos de cuentas>* (Cambia el texto de .pago)
+*Personalización:*
+🔹 *.nombre <Nuevo Nombre>*
+🔹 *.plantilla <Mensaje>*
+🔹 *.setpago <Datos de cuentas>*
 
 *Operaciones:*
-🔹 *.cobrar* (Lanza el envío automático en este momento)`;
+🔹 *.cobrar* (Enviar ahora mismo)`;
 
       await sock.sendMessage(senderJid, { text: menu });
       return;
@@ -140,49 +155,33 @@ async function startBot() {
 
     if (!esAdmin) return;
 
-    // Cambiar nombre
     if (cmd.toLowerCase() === '.nombre') {
-      if (!parametro) {
-        await sock.sendMessage(senderJid, { text: '⚠️ Especifica el nuevo nombre. Ejemplo:\n.nombre FINANCIERA CREFICER' });
-        return;
-      }
+      if (!parametro) return sock.sendMessage(senderJid, { text: '⚠️ Especifica el nuevo nombre.' });
       configActual.nombreFinanciera = parametro;
       writeJson(CONFIG_FILE, configActual);
       await sock.sendMessage(senderJid, { text: `✅ Nombre actualizado a: *${parametro}*` });
       return;
     }
 
-    // Cambiar plantilla
     if (cmd.toLowerCase() === '.plantilla') {
-      if (!parametro) {
-        await sock.sendMessage(senderJid, { text: '⚠️ Escribe la plantilla. Recuerda que puedes usar {nombre}, {monto} y {financiera}.' });
-        return;
-      }
+      if (!parametro) return sock.sendMessage(senderJid, { text: '⚠️ Escribe la plantilla con {nombre}, {monto} y {financiera}.' });
       configActual.plantillaRecordatorio = parametro;
       writeJson(CONFIG_FILE, configActual);
-      await sock.sendMessage(senderJid, { text: '✅ Plantilla de recordatorio guardada con éxito.' });
+      await sock.sendMessage(senderJid, { text: '✅ Plantilla de recordatorio guardada.' });
       return;
     }
 
-    // Cambiar datos de pago
     if (cmd.toLowerCase() === '.setpago') {
-      if (!parametro) {
-        await sock.sendMessage(senderJid, { text: '⚠️ Escribe los nuevos datos de pago.' });
-        return;
-      }
+      if (!parametro) return sock.sendMessage(senderJid, { text: '⚠️ Escribe los nuevos datos de pago.' });
       configActual.infoPago = parametro;
       writeJson(CONFIG_FILE, configActual);
-      await sock.sendMessage(senderJid, { text: '✅ Datos del comando *.pago* actualizados.' });
+      await sock.sendMessage(senderJid, { text: '✅ Datos de .pago actualizados.' });
       return;
     }
 
-    // Ver clientes
     if (cmd.toLowerCase() === '.clientes') {
       const clientes = readJson(CLIENTES_FILE, []);
-      if (clientes.length === 0) {
-        await sock.sendMessage(senderJid, { text: 'No tienes clientes registrados aún.' });
-        return;
-      }
+      if (clientes.length === 0) return sock.sendMessage(senderJid, { text: 'No hay clientes registrados.' });
       let lista = `👥 *CLIENTES REGISTRADOS (${clientes.length})*\n\n`;
       clientes.forEach((c, idx) => {
         lista += `${idx + 1}. *${c.nombre}*\n   Tel: ${c.telefono}\n   Monto: ${c.monto} | Tipo: ${c.frecuencia}${c.frecuencia === 'semanal' ? ' (Día ' + c.diaSemana + ')' : ''}\n\n`;
@@ -191,57 +190,59 @@ async function startBot() {
       return;
     }
 
-    // Agregar cliente
     if (cmd.toLowerCase() === '.agregar') {
       const partes = parametro.split('|').map((p) => p.trim());
       if (partes.length < 4) {
-        await sock.sendMessage(senderJid, { text: '⚠️ Formato incorrecto. Debe ser:\n.agregar Nombre | Teléfono | Monto | Frecuencia (diario/semanal) | [diaSemana opcional]' });
-        return;
+        return sock.sendMessage(senderJid, { text: '⚠️ Formato: .agregar Nombre | Teléfono | Monto | Frecuencia | [diaSemana]' });
       }
 
       const [nombre, telefono, monto, frecuencia, dia] = partes;
       const clientes = readJson(CLIENTES_FILE, []);
-      const limpioTel = telefono.replace(/[^0-9]/g, '');
-
-      const nuevo = {
+      clientes.push({
         nombre,
-        telefono: limpioTel,
+        telefono: telefono.replace(/[^0-9]/g, ''),
         monto,
         frecuencia: frecuencia.toLowerCase(),
         diaSemana: dia !== undefined ? parseInt(dia) : null,
         activo: true
-      };
-
-      clientes.push(nuevo);
+      });
       writeJson(CLIENTES_FILE, clientes);
-      await sock.sendMessage(senderJid, { text: `✅ Cliente *${nombre}* registrado correctamente.` });
+      await sock.sendMessage(senderJid, { text: `✅ Cliente *${nombre}* guardado.` });
       return;
     }
 
-    // Eliminar cliente
     if (cmd.toLowerCase() === '.eliminar') {
       const tel = parametro.replace(/[^0-9]/g, '');
       let clientes = readJson(CLIENTES_FILE, []);
-      const totalAntes = clientes.length;
+      const antes = clientes.length;
       clientes = clientes.filter((c) => c.telefono !== tel);
-
-      if (clientes.length === totalAntes) {
-        await sock.sendMessage(senderJid, { text: `⚠️ No se encontró ningún cliente con el número ${tel}.` });
+      if (clientes.length === antes) {
+        await sock.sendMessage(senderJid, { text: `⚠️ No se encontró al cliente con teléfono ${tel}.` });
       } else {
         writeJson(CLIENTES_FILE, clientes);
-        await sock.sendMessage(senderJid, { text: `✅ Cliente con número ${tel} eliminado.` });
+        await sock.sendMessage(senderJid, { text: `✅ Cliente eliminado.` });
       }
       return;
     }
 
-    // Disparo manual
     if (cmd.toLowerCase() === '.cobrar') {
-      await sock.sendMessage(senderJid, { text: '🚀 Iniciando ciclo de cobranza inmediato...' });
+      await sock.sendMessage(senderJid, { text: '🚀 Iniciando cobranza inmediata...' });
       await procesarCobranza(sock);
-      await sock.sendMessage(senderJid, { text: '🏁 Ciclo de cobranza terminado.' });
+      await sock.sendMessage(senderJid, { text: '🏁 Cobranza finalizada.' });
       return;
     }
   });
+}
+
+function iniciarRutinaCron(sock) {
+  const config = readJson(CONFIG_FILE, {});
+  const cronHorario = config.horaEnvio || '30 8 * * *';
+  const tz = config.timezone || 'America/Mexico_City';
+
+  cron.schedule(cronHorario, async () => {
+    console.log('--- Ejecutando envío programado ---');
+    await procesarCobranza(sock);
+  }, { timezone: tz });
 }
 
 async function procesarCobranza(sock) {
@@ -262,7 +263,7 @@ async function procesarCobranza(sock) {
 
     if (leToca) {
       const jid = `${cliente.telefono}@s.whatsapp.net`;
-      let mensaje = config.plantillaRecordatorio
+      let mensaje = (config.plantillaRecordatorio || '')
         .replace(/{nombre}/g, cliente.nombre)
         .replace(/{monto}/g, cliente.monto)
         .replace(/{financiera}/g, config.nombreFinanciera);
