@@ -1,0 +1,18 @@
+[
+  {
+    "nombre": "Juan Perez",
+    "telefono": "5212221234567",
+    "monto": "$150.00",
+    "frecuencia": "diario",
+    "diaSemana": null,
+    "activo": true
+  },
+  {
+    "nombre": "Maria Lopez",
+    "telefono": "5212229876543",
+    "monto": "$500.00",
+    "frecuencia": "semanal",
+    "diaSemana": 1,
+    "activo": true
+  }
+]
