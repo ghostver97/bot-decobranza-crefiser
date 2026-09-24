@@ -1,0 +1,18 @@
+{
+  "name": "whatsapp-recordatorio-pagos",
+  "version": "1.2.0",
+  "description": "Bot de WhatsApp para recordatorios automáticos de pago con comandos /id y /prueba.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
+    "node-cron": "^4.2.1",
+    "pino": "^9.7.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
