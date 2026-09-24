@@ -1,37 +1,69 @@
-# Bot de WhatsApp — Recordatorios de pago
+# Bot WhatsApp — versión Railway
 
-## Comandos
+## Lo que incluye
 
-### `/id`
-Escríbelo dentro del grupo para obtener el ID del grupo.
-
-Después coloca ese valor en Railway:
-
-`GROUP_ID=ID_DEL_GRUPO`
-
-### `/prueba`
-Escríbelo dentro del grupo configurado para enviar inmediatamente una prueba del recordatorio.
-
-Si funciona, el bot enviará:
-
-`🧪 PRUEBA DEL BOT`
-
-seguido del mensaje de pago.
-
-## Horario automático
-
-Lunes a viernes:
-- 8:00 AM
-- 9:00 AM
-- 10:00 AM
-
-Zona horaria:
-`America/Mexico_City`
+- QR limpio en una página web de Railway: `/qr`
+- No depende del QR deforme de la terminal.
+- `/id` obtiene el ID del grupo.
+- `/prueba` envía una prueba inmediata.
+- `/texto NUEVO TEXTO` cambia el mensaje automático.
+- `/borrartexto` restaura el texto original.
+- Responder a una foto con `/foto` la guarda para usarla junto al texto.
+- `/borrarfoto` elimina la foto.
+- `/ayuda` muestra los comandos.
+- Los cambios de texto/foto se guardan en `bot_data`.
+- Recordatorios automáticos lunes-viernes a las 8, 9 y 10 AM.
+- Solo administradores del grupo configurado pueden cambiar texto/foto.
 
 ## Railway
 
-Variables:
-- `GROUP_ID`
-- `TIMEZONE=America/Mexico_City`
+Variables de entorno:
 
-Para conservar la sesión de WhatsApp, monta un Volume en Railway para `./auth_info`.
+GROUP_ID=ID_DEL_GRUPO
+TIMEZONE=America/Mexico_City
+
+Railway asigna PORT automáticamente.
+
+## QR
+
+Después de desplegar, abre el dominio público de Railway y agrega `/qr`.
+
+Ejemplo:
+https://TU-DOMINIO.up.railway.app/qr
+
+El dominio exacto lo proporciona Railway.
+
+## Volume
+
+MUY IMPORTANTE: monta un Volume de Railway en:
+
+/app/auth_info
+
+y otro, o el mismo Volume, de forma que también conserve:
+
+/app/bot_data
+
+Así no se pierde la sesión de WhatsApp ni el texto/foto personalizados cuando el servicio se reinicie.
+
+## Comandos
+
+/id
+/prueba
+/ayuda
+
+/texto NUEVO TEXTO
+/borrartexto
+
+Para poner una foto:
+1. Envía una foto al grupo.
+2. Responde a esa foto escribiendo `/foto`.
+
+Para quitarla:
+/borrarfoto
+
+## Horario
+
+0 8,9,10 * * 1-5
+
+Zona horaria:
+America/Mexico_City
