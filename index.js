@@ -21,6 +21,7 @@ const AUTH_DIR = process.env.AUTH_DIR || "/app/storage/auth_info";
 const DATA_DIR = process.env.DATA_DIR || "/app/storage/bot_data";
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const IMAGE_FILE = path.join(DATA_DIR, "reminder.jpg");
+const VIDEO_FILE = path.join(DATA_DIR, "reminder.mp4");
 
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -45,31 +46,50 @@ Cuida tu historial crediticio. Recuerda que fuiste recomendado como un cliente p
 
 📋 Recuerda que el asesor te tiene que firmar tu tarjeta de Crefiser.`;
 
-function loadText() {
+// Carga la configuración persistente
+function loadConfig() {
+  const defaultConfig = {
+    text: DEFAULT_TEXT,
+    hours: "8,9,10",
+    days: "1-5"
+  };
+
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-      return data.text || DEFAULT_TEXT;
+      return { ...defaultConfig, ...data };
     }
   } catch (e) {
     console.error("Error leyendo configuración:", e);
   }
-  return DEFAULT_TEXT;
+  return defaultConfig;
 }
 
-function saveText(text) {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ text }, null, 2), "utf8");
+function saveConfig(data) {
+  try {
+    const current = loadConfig();
+    const updated = { ...current, ...data };
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), "utf8");
+  } catch (e) {
+    console.error("Error guardando configuración:", e);
+  }
 }
 
-let automaticText = loadText();
+let botConfig = loadConfig();
 let currentQR = null;
 let sock = null;
 let connected = false;
+let cronJob = null;
 
 async function sendReminder(jid, prefix = "") {
-  const text = prefix + automaticText;
+  const text = prefix + botConfig.text;
 
-  if (fs.existsSync(IMAGE_FILE)) {
+  if (fs.existsSync(VIDEO_FILE)) {
+    await sock.sendMessage(jid, {
+      video: fs.readFileSync(VIDEO_FILE),
+      caption: text
+    });
+  } else if (fs.existsSync(IMAGE_FILE)) {
     await sock.sendMessage(jid, {
       image: fs.readFileSync(IMAGE_FILE),
       caption: text
@@ -77,6 +97,34 @@ async function sendReminder(jid, prefix = "") {
   } else {
     await sock.sendMessage(jid, { text });
   }
+}
+
+// Configura o reinicia la tarea programada con los nuevos días y horas
+function scheduleReminders() {
+  if (cronJob) {
+    cronJob.stop();
+  }
+
+  const cronExpression = `0 ${botConfig.hours} * * ${botConfig.days}`;
+  console.log(`⏰ Cron programado: "${cronExpression}" en zona ${TIMEZONE}`);
+
+  cronJob = cron.schedule(
+    cronExpression,
+    async () => {
+      if (!GROUP_ID || !connected) {
+        console.log("⚠️ No se envió recordatorio: falta GROUP_ID o WhatsApp no está conectado.");
+        return;
+      }
+
+      try {
+        await sendReminder(GROUP_ID);
+        console.log(`📨 Recordatorio automático enviado a ${GROUP_ID}`);
+      } catch (error) {
+        console.error("❌ Error enviando recordatorio:", error);
+      }
+    },
+    { timezone: TIMEZONE }
+  );
 }
 
 async function startWhatsApp() {
@@ -138,7 +186,7 @@ async function startWhatsApp() {
 
       const command = text.trim();
 
-      // Obtener ID del grupo.
+      // Obtener ID del grupo
       if (command.toLowerCase() === "/id") {
         await sock.sendMessage(remoteJid, {
           text: `🆔 ID DE ESTE GRUPO:\n\n${remoteJid}\n\nGROUP_ID=${remoteJid}`
@@ -146,7 +194,7 @@ async function startWhatsApp() {
         return;
       }
 
-      // Solo acepta comandos de administración en el grupo configurado.
+      // Solo atiende al grupo autorizado
       if (!GROUP_ID || remoteJid !== GROUP_ID) return;
 
       if (command.toLowerCase() === "/prueba") {
@@ -157,76 +205,63 @@ async function startWhatsApp() {
       if (command.toLowerCase() === "/ayuda") {
         await sock.sendMessage(remoteJid, {
           text:
-`🤖 COMANDOS
+`🤖 COMANDOS DISPONIBLES
 
-/id → muestra el ID del grupo
-/prueba → envía una prueba
-/ayuda → muestra comandos
+📌 *General:*
+• /id → muestra el ID del grupo
+• /prueba → envía una prueba del recordatorio
+• /ayuda → muestra este menú
 
-/texto TU MENSAJE → cambia el texto automático
-/borrartexto → restaura el texto original
+📝 *Texto:*
+• /texto TU MENSAJE → cambia el texto automático
+• /borrartexto → restaura el texto original
 
-/foto → responde a una foto con este comando
-/borrarfoto → elimina la foto`
+📷 *Multimedia:*
+• /foto → responde a una foto para guardarla
+• /borrarfoto → elimina la foto
+• /video → responde a un video para guardarlo
+• /borrarvideo → elimina el video
+
+⏰ *Horarios y Días:*
+• /horario 8,9,10,11 → ajusta horas separadas por comas (formato 24h)
+• /dias 1-5 → ajusta días (1-5 Lun a Vie, 1-6 Lun a Sáb)
+• /verhorario → muestra el horario y días configurados`
         });
         return;
       }
 
+      // --- TEXTO ---
       if (command.toLowerCase().startsWith("/texto ")) {
         const newText = command.substring(7).trim();
-
         if (!newText) {
-          await sock.sendMessage(remoteJid, {
-            text: "❌ Escribe el nuevo texto después de /texto."
-          });
+          await sock.sendMessage(remoteJid, { text: "❌ Escribe el nuevo texto después de /texto." });
           return;
         }
-
-        automaticText = newText;
-        saveText(automaticText);
-
-        await sock.sendMessage(remoteJid, {
-          text: "✅ Texto automático actualizado."
-        });
+        botConfig.text = newText;
+        saveConfig({ text: newText });
+        await sock.sendMessage(remoteJid, { text: "✅ Texto automático actualizado." });
         return;
       }
 
       if (command.toLowerCase() === "/borrartexto") {
-        automaticText = DEFAULT_TEXT;
-        saveText(DEFAULT_TEXT);
-
-        await sock.sendMessage(remoteJid, {
-          text: "✅ Texto original restaurado."
-        });
+        botConfig.text = DEFAULT_TEXT;
+        saveConfig({ text: DEFAULT_TEXT });
+        await sock.sendMessage(remoteJid, { text: "✅ Texto original restaurado." });
         return;
       }
 
-      if (command.toLowerCase() === "/borrarfoto") {
-        if (fs.existsSync(IMAGE_FILE)) fs.unlinkSync(IMAGE_FILE);
-
-        await sock.sendMessage(remoteJid, {
-          text: "✅ Foto eliminada del recordatorio."
-        });
-        return;
-      }
-
+      // --- FOTO ---
       if (command.toLowerCase() === "/foto") {
         const context = msg.message.extendedTextMessage?.contextInfo;
         const quoted = context?.quotedMessage;
 
         if (!quoted?.imageMessage) {
-          await sock.sendMessage(remoteJid, {
-            text: "❌ Responde a una foto con /foto."
-          });
+          await sock.sendMessage(remoteJid, { text: "❌ Responde a una foto con /foto." });
           return;
         }
 
         const quotedMessage = {
-          key: {
-            remoteJid,
-            id: context.stanzaId,
-            participant: context.participant
-          },
+          key: { remoteJid, id: context.stanzaId, participant: context.participant },
           message: quoted
         };
 
@@ -238,9 +273,99 @@ async function startWhatsApp() {
         );
 
         fs.writeFileSync(IMAGE_FILE, buffer);
+        await sock.sendMessage(remoteJid, { text: "✅ Foto guardada para los recordatorios." });
+        return;
+      }
+
+      if (command.toLowerCase() === "/borrarfoto") {
+        if (fs.existsSync(IMAGE_FILE)) fs.unlinkSync(IMAGE_FILE);
+        await sock.sendMessage(remoteJid, { text: "✅ Foto eliminada del recordatorio." });
+        return;
+      }
+
+      // --- VIDEO ---
+      if (command.toLowerCase() === "/video") {
+        const context = msg.message.extendedTextMessage?.contextInfo;
+        const quoted = context?.quotedMessage;
+
+        if (!quoted?.videoMessage) {
+          await sock.sendMessage(remoteJid, { text: "❌ Responde a un video con /video." });
+          return;
+        }
+
+        const quotedMessage = {
+          key: { remoteJid, id: context.stanzaId, participant: context.participant },
+          message: quoted
+        };
+
+        const buffer = await downloadMediaMessage(
+          quotedMessage,
+          "buffer",
+          {},
+          { logger: P({ level: "silent" }) }
+        );
+
+        fs.writeFileSync(VIDEO_FILE, buffer);
+        await sock.sendMessage(remoteJid, { text: "✅ Video guardado para los recordatorios." });
+        return;
+      }
+
+      if (command.toLowerCase() === "/borrarvideo") {
+        if (fs.existsSync(VIDEO_FILE)) fs.unlinkSync(VIDEO_FILE);
+        await sock.sendMessage(remoteJid, { text: "✅ Video eliminado del recordatorio." });
+        return;
+      }
+
+      // --- HORARIOS Y DÍAS ---
+      if (command.toLowerCase().startsWith("/horario ")) {
+        const hoursInput = command.substring(9).trim().replace(/\s+/g, "");
+        if (!/^([0-9]|1[0-9]|2[0-3])(,([0-9]|1[0-9]|2[0-3]))*$/.test(hoursInput)) {
+          await sock.sendMessage(remoteJid, {
+            text: "❌ Formato incorrecto. Usa números del 0 al 23 separados por comas.\nEjemplo: /horario 8,9,10,11"
+          });
+          return;
+        }
+
+        botConfig.hours = hoursInput;
+        saveConfig({ hours: hoursInput });
+        scheduleReminders();
 
         await sock.sendMessage(remoteJid, {
-          text: "✅ Foto guardada para los recordatorios."
+          text: `✅ Horario actualizado con éxito.\nHoras activas: ${hoursInput} hrs (Zona: ${TIMEZONE})`
+        });
+        return;
+      }
+
+      if (command.toLowerCase().startsWith("/dias ")) {
+        const daysInput = command.substring(6).trim();
+        // Acepta formato cron como 1-5, 1-6, 0-6 o números separados por coma 1,2,3,4,5
+        if (!/^(\*|[0-7](-[0-7])?(,[0-7](-[0-7])?)*)$/.test(daysInput)) {
+          await sock.sendMessage(remoteJid, {
+            text: "❌ Formato incorrecto.\nEjemplos válidos:\n• /dias 1-5 (Lunes a Viernes)\n• /dias 1-6 (Lunes a Sábado)\n• /dias 0-6 (Todos los días)"
+          });
+          return;
+        }
+
+        botConfig.days = daysInput;
+        saveConfig({ days: daysInput });
+        scheduleReminders();
+
+        await sock.sendMessage(remoteJid, {
+          text: `✅ Días actualizados con éxito.\nConfiguración activa: ${daysInput}`
+        });
+        return;
+      }
+
+      if (command.toLowerCase() === "/verhorario") {
+        await sock.sendMessage(remoteJid, {
+          text:
+`⏰ CONFIGURACIÓN ACTUAL
+
+• Horas: ${botConfig.hours} hrs
+• Días: ${botConfig.days} (0=Dom, 1=Lun, ..., 6=Sáb)
+• Zona horaria: ${TIMEZONE}
+• Imagen adjunta: ${fs.existsSync(IMAGE_FILE) ? "Sí" : "No"}
+• Video adjunto: ${fs.existsSync(VIDEO_FILE) ? "Sí" : "No"}`
         });
       }
     } catch (error) {
@@ -248,24 +373,11 @@ async function startWhatsApp() {
     }
   });
 
-  // Lunes a viernes a las 8:00, 9:00 y 10:00 AM.
-  cron.schedule("0 8,9,10 * * 1-5", async () => {
-    if (!GROUP_ID || !connected) {
-      console.log("⚠️ No se envió recordatorio: falta GROUP_ID o WhatsApp no está conectado.");
-      return;
-    }
-
-    try {
-      await sendReminder(GROUP_ID);
-      console.log(`📨 Recordatorio automático enviado a ${GROUP_ID}`);
-    } catch (error) {
-      console.error("❌ Error enviando recordatorio:", error);
-    }
-  }, { timezone: TIMEZONE });
+  // Iniciar la tarea programada
+  scheduleReminders();
 }
 
-// Servidor web de Railway.
-// IMPORTANTE: 0.0.0.0 permite que el dominio público de Railway pueda acceder.
+// Servidor Express
 const app = express();
 
 app.get("/", (req, res) => {
