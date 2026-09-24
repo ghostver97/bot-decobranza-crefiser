@@ -1,69 +1,61 @@
-# Bot WhatsApp — versión Railway
+# Bot WhatsApp Railway — corregido
 
-## Lo que incluye
+## Corrección importante
 
-- QR limpio en una página web de Railway: `/qr`
-- No depende del QR deforme de la terminal.
-- `/id` obtiene el ID del grupo.
-- `/prueba` envía una prueba inmediata.
-- `/texto NUEVO TEXTO` cambia el mensaje automático.
-- `/borrartexto` restaura el texto original.
-- Responder a una foto con `/foto` la guarda para usarla junto al texto.
-- `/borrarfoto` elimina la foto.
-- `/ayuda` muestra los comandos.
-- Los cambios de texto/foto se guardan en `bot_data`.
-- Recordatorios automáticos lunes-viernes a las 8, 9 y 10 AM.
-- Solo administradores del grupo configurado pueden cambiar texto/foto.
+El servidor Express escucha en `0.0.0.0` usando el puerto `PORT` de Railway. Esto permite que el dominio público de Railway pueda abrir `/qr`.
 
-## Railway
+Start Command:
+`npm start`
 
-Variables de entorno:
-
-GROUP_ID=ID_DEL_GRUPO
-TIMEZONE=America/Mexico_City
-
-Railway asigna PORT automáticamente.
+También funciona:
+`node index.js`
 
 ## QR
 
-Después de desplegar, abre el dominio público de Railway y agrega `/qr`.
+Después de desplegar y generar un dominio público en Railway:
 
-Ejemplo:
-https://TU-DOMINIO.up.railway.app/qr
+`https://TU-DOMINIO.up.railway.app/qr`
 
-El dominio exacto lo proporciona Railway.
+Si todavía está generando el QR, la página se actualiza automáticamente.
 
-## Volume
+## Variables
 
-MUY IMPORTANTE: monta un Volume de Railway en:
-
-/app/auth_info
-
-y otro, o el mismo Volume, de forma que también conserve:
-
-/app/bot_data
-
-Así no se pierde la sesión de WhatsApp ni el texto/foto personalizados cuando el servicio se reinicie.
+`GROUP_ID=ID_DEL_GRUPO`
+`TIMEZONE=America/Mexico_City`
 
 ## Comandos
 
-/id
-/prueba
-/ayuda
+`/id`
+`/prueba`
+`/ayuda`
+`/texto TU MENSAJE`
+`/borrartexto`
 
-/texto NUEVO TEXTO
-/borrartexto
-
-Para poner una foto:
-1. Envía una foto al grupo.
-2. Responde a esa foto escribiendo `/foto`.
+Para una foto:
+- envía la foto al grupo
+- responde a la foto con `/foto`
 
 Para quitarla:
-/borrarfoto
+`/borrarfoto`
+
+## Persistencia
+
+Crea un Volume en Railway y móntalo en:
+
+`/app`
+
+Esto conserva:
+- `/app/auth_info`
+- `/app/bot_data`
+
+Así no se pierde la sesión ni la configuración al reiniciar.
 
 ## Horario
 
-0 8,9,10 * * 1-5
+Lunes a viernes:
+8:00 AM
+9:00 AM
+10:00 AM
 
-Zona horaria:
-America/Mexico_City
+Zona:
+`America/Mexico_City`

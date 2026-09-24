@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-recordatorio-pagos",
-  "version": "2.0.0",
-  "description": "Bot de WhatsApp con QR web, recordatorios automáticos, texto e imagen configurables.",
+  "version": "2.1.0",
+  "description": "Bot de WhatsApp para Railway con QR web, recordatorios y texto/foto configurables.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -14,7 +14,6 @@
     "express": "^5.1.0",
     "node-cron": "^4.2.1",
     "pino": "^9.7.0",
-    "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode": "^1.5.4"
   }
 }
