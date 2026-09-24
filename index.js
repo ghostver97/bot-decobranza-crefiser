@@ -17,8 +17,8 @@ const PORT = Number(process.env.PORT || 3000);
 const TIMEZONE = process.env.TIMEZONE || "America/Mexico_City";
 const GROUP_ID = process.env.GROUP_ID || "";
 
-const AUTH_DIR = process.env.AUTH_DIR || "/app/auth_info";
-const DATA_DIR = process.env.DATA_DIR || "/app/bot_data";
+const AUTH_DIR = process.env.AUTH_DIR || "/app/storage/auth_info";
+const DATA_DIR = process.env.DATA_DIR || "/app/storage/bot_data";
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const IMAGE_FILE = path.join(DATA_DIR, "reminder.jpg");
 

@@ -1,61 +1,111 @@
-# Bot WhatsApp Railway — corregido
+# Bot WhatsApp — Railway (corrección del Volume)
 
-## Corrección importante
+## IMPORTANTE: configuración del Volume
 
-El servidor Express escucha en `0.0.0.0` usando el puerto `PORT` de Railway. Esto permite que el dominio público de Railway pueda abrir `/qr`.
+El error que aparece cuando Railway dice:
 
-Start Command:
-`npm start`
+`ENOENT: no such file or directory, open '/app/package.json'`
 
-También funciona:
-`node index.js`
+ocurre si el Volume está montado directamente en `/app`.
 
-## QR
+NO montes el Volume en `/app`, porque tapa `package.json`, `index.js` y el resto del proyecto.
 
-Después de desplegar y generar un dominio público en Railway:
+### Montaje correcto
 
-`https://TU-DOMINIO.up.railway.app/qr`
+En Railway, configura el Volume con:
 
-Si todavía está generando el QR, la página se actualiza automáticamente.
+**Mount Path**
+```text
+/app/storage
+```
+
+El código guardará ahí:
+```text
+/app/storage/auth_info
+/app/storage/bot_data
+```
+
+La aplicación seguirá estando en:
+```text
+/app
+```
+
+y Railway podrá encontrar:
+```text
+/app/package.json
+/app/index.js
+```
+
+## Start Command
+
+```text
+npm start
+```
 
 ## Variables
 
-`GROUP_ID=ID_DEL_GRUPO`
-`TIMEZONE=America/Mexico_City`
+```text
+GROUP_ID=120363429003094179@g.us
+TIMEZONE=America/Mexico_City
+```
 
-## Comandos
+No necesitas poner `AUTH_DIR` ni `DATA_DIR`; el código ya usa `/app/storage`.
 
-`/id`
-`/prueba`
-`/ayuda`
-`/texto TU MENSAJE`
-`/borrartexto`
+## Después de cambiar el Mount Path
 
-Para una foto:
-- envía la foto al grupo
-- responde a la foto con `/foto`
+1. Guarda el Volume con `/app/storage`.
+2. Haz Redeploy/Restart.
+3. En los logs debe desaparecer el error `package.json`.
+4. Debe aparecer:
+   `🌐 Servidor iniciado...`
+5. Abre el dominio de Railway:
+   `https://TU-DOMINIO.up.railway.app/qr`
 
-Para quitarla:
-`/borrarfoto`
+## Grupo
 
-## Persistencia
+El ID que aparece en tu captura es:
 
-Crea un Volume en Railway y móntalo en:
+```text
+120363429003094179@g.us
+```
 
-`/app`
+Ese valor está escrito correctamente como `GROUP_ID`.
 
-Esto conserva:
-- `/app/auth_info`
-- `/app/bot_data`
+## Comandos del bot
 
-Así no se pierde la sesión ni la configuración al reiniciar.
+Dentro del grupo:
 
-## Horario
+```text
+/id
+/prueba
+/ayuda
+```
+
+Cambiar texto:
+```text
+/texto TU NUEVO MENSAJE
+```
+
+Restaurar:
+```text
+/borrartexto
+```
+
+Para guardar una foto:
+1. Envía la foto al grupo.
+2. Responde a esa foto con `/foto`.
+
+Eliminar foto:
+```text
+/borrarfoto
+```
+
+## Horario automático
 
 Lunes a viernes:
-8:00 AM
-9:00 AM
-10:00 AM
+- 8:00 AM
+- 9:00 AM
+- 10:00 AM
 
-Zona:
+Zona horaria:
 `America/Mexico_City`
