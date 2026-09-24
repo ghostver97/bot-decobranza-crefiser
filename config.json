@@ -1,8 +1,0 @@
-{
-  "adminNumber": "5210000000000",
-  "nombreFinanciera": "FINANCIERA CREFICER",
-  "horaEnvio": "30 8 * * *",
-  "timezone": "America/Mexico_City",
-  "infoPago": "💳 *DATOS DE PAGO - FINANCIERA CREFICER*\n\nBanco: BBVA\nCuenta: 1234 5678 9012\nCLABE: 0123 4567 8901 2345 67\nBeneficiario: FINANCIERA CREFICER\n\n_Por favor envía la foto de tu comprobante una vez realizado el pago._",
-  "plantillaRecordatorio": "Hola *{nombre}*, buen día 🤝\n\nTe recordamos de parte de *{financiera}* que el día de hoy corresponde tu pago puntual por la cantidad de *{monto}*.\n\nEscribe *.pago* para ver las cuentas bancarias o reporta tu comprobante por este medio. ¡Muchas gracias por tu puntualidad!"
-}
